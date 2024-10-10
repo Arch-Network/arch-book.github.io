@@ -7,7 +7,7 @@
     - [Requirements](getting-started/requirements.md)
     - [Starting the stack](getting-started/starting-stack.md)
         - [Nodes](concepts/nodes.md)
-    - [Compiling and executing](getting-started/compiling-executing.md)
+    - [Building, deploying and interfacing](getting-started/building-deploying-interfacing.md)
     - [Resources](getting-started/resources.md)
 
 # Programs and beyond

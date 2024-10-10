@@ -1,6 +1,11 @@
 # Starting the stack
 
-Within [arch-local] there is a [compose.yaml] file. This is a descriptor for the pre-configured multi-container definition of the components required for standing up a local development environment.
+Within [arch-cli], there exist 3 configuration files needed to provision the various services:
+1. [arch-docker-compose.yml]
+2. [bitcoin-docker-compose.yml]
+3. [btc-rpc-explorer.dockerfile]
+
+These files comprise the pre-configured, multi-container definition of the components required for standing up a local development environment.
 
 ### Configure
 
@@ -11,38 +16,185 @@ First, ensure that your Docker client is up-to-date and that the `DOCKER_DEFAULT
 export DOCKER_DEFAULT_PLATFORM=linux/amd64
 ```
 
-**NOTE:** Additionally, if you have an Intel chip (ie, x86_64), you may encounter the following error when executing `docker compose up`; we recommend removing the `--platform=linux/arm64` flag within [Line 1: Dockerfile]:
+#### Declare your `config.toml`
+
+Before using `arch-cli`, you need to set up a `config.toml` file. By default, the CLI will look for this file in the following locations:
+- Linux: ~/.config/arch-cli/config.toml
+- macOS: ~/Library/Application Support/arch-cli/config.toml
+- Windows: C:\Users\<User>\AppData\Roaming\arch-cli\config.toml
+
+If the configuration file is not found, a default configuration file will be created automatically using the `config.default.toml` template which can then be renamed to `config.toml` if you don't wish to create your own.
+
+You can also specify a custom configuration file location by setting the `ARCH_CLI_CONFIG` environment variable:
 
 ```bash
-=> ERROR [init-bootnode 2/3] RUN set -ex && apt-get update && apt-get install -qq --no-install-recommends curl jq               0.6s
-------
- > [init-bootnode 2/3] RUN set -ex && apt-get update && apt-get install -qq --no-install-recommends curl jq:
-0.314 exec /bin/sh: exec format error
-------
-failed to solve: process "/bin/sh -c set -ex \t&& apt-get update \t&& apt-get install -qq --no-install-recommends curl jq" did not complete successfully: exit code: 1
+export ARCH_CLI_CONFIG=/path/to/your/config.toml
 ```
 
-### Start
-Once Docker is up and running, start the stack by issuing the following command:
+Here's an example configuration:
+
+```toml
+[network]
+type = "development"  # Options: development, testnet, mainnet
+
+[bitcoin]
+docker_compose_file = "./bitcoin-docker-compose.yml"
+network = "regtest"
+rpc_endpoint = "http://localhost:18443"
+rpc_port = "18443"
+rpc_user = "bitcoin"
+rpc_password = "password"
+rpc_wallet = "devwallet"
+
+[arch]
+docker_compose_file = "./arch-docker-compose.yml"
+leader_rpc_endpoint = "http://localhost:8080"
+network_mode = "development"
+rust_log = "info"
+rust_backtrace = "1"
+bootnode_ip = "127.0.0.1"
+leader_p2p_port = "9000"
+leader_rpc_port = "8080"
+validator1_p2p_port = "9001"
+validator1_rpc_port = "8081"
+validator2_p2p_port = "9002"
+validator2_rpc_port = "8082"
+bitcoin_rpc_endpoint = "http://localhost:18443"
+bitcoin_rpc_wallet = "devwallet"
+replica_count = "3"
+
+[program]
+key_path = "src/app/keys/program.json"
+```
+
+By following these steps, you ensure that your CLI can be run from any location and still correctly locate and load its configuration files on Windows, macOS, and Linux.
+
+### Initialize
+
+The `init` subcommand sets up a new Arch Network project with the necessary folder structure, boilerplate code, and Docker configurations.
+
+We'll invoke this and setup a new project.
+
 ```bash
-docker compose up
+arch-cli init
+```
+
+If everything initializes smoothly, you'll be presented with output similar to the following:
+```bash
+Welcome to the Arch Network CLI
+  → Loading configuration from /Users/jr/Library/Application Support/arch-cli/config.toml
+Initializing new Arch Network app...
+Checking required dependencies...
+  → Checking docker... ✓
+    Detected version: Docker version 27.2.0, build 3ab4256958
+  → Checking docker-compose... ✓
+    Detected version: Docker Compose version 2.29.2
+  → Checking node... ✓
+    Detected version: v22.8.0
+  → Checking solana... ✓
+    Detected version: solana-cli 1.18.22 (src:b286211c; feat:4215500110, client:SolanaLabs)
+  → Checking cargo... ✓
+    Detected version: cargo 1.80.1 (376290515 2024-07-16)
+All required dependencies are installed.
+  ✓ Created arch-data directory at "/Users/jr/Library/Application Support/arch-cli/arch-data"
+  ✓ Copied default configuration to "/Users/jr/Library/Application Support/arch-cli/config.toml"
+Building Arch Network program...
+Creating project structure...
+Creating boilerplate files...
+  ℹ Existing program directory found, preserving it
+  ℹ Existing frontend directory found, preserving it
+  ✓ New Arch Network app initialized successfully!
+```
+
+Your project should now have the following structure:
+```bash
+my-arch-project/
+├── src/
+│   └── app/
+│       ├── program/
+│       │   └── src/
+│       │       └── lib.rs
+│       ├── backend/
+│       │   ├── index.ts
+│       │   └── package.json
+│       ├── frontend/
+│       │   ├── index.html
+│       │   ├── index.js
+│       │   ├── package.json
+│       │   └── .env.example
+│       └── keys/
+├── Cargo.toml
+├── config.toml
+├── bitcoin-docker-compose.yml
+└── arch-docker-compose.yml
+```
+
+### Start the services
+
+Now that the arch-cli is properly configured and we've initialized a new project, our next step will be to start the development cluster which will provision the Arch network nodes, an ordinals indexing service and a block explorer.
+
+```bash
+arch-cli server start
 ```
 
 If everything pulls and builds correctly, you should see something resembling the following in your Docker client logs: 
 ```bash
-leader-1       | 2024-08-22T00:22:08.858084Z  INFO validator::roast::roast_leader: validator/src/roast/roast_leader.rs:54: Starting a new session with id 2
-leader-1       | 2024-08-22T00:22:08.861441Z  INFO validator::roast::roast_entry_generation: validator/src/roast/roast_entry_generation.rs:65: Generated 1 block commitments for block id #3c2360fc4938d5f08a2ab8b0bc15f5ee54b42dc1cd61a8b906952e068f2a92d9 session #2
-validator-2-1  | 2024-08-22T00:22:08.863250Z  INFO validator::roast::roast_entry_generation: validator/src/roast/roast_entry_generation.rs:65: Generated 1 block commitments for block id #3c2360fc4938d5f08a2ab8b0bc15f5ee54b42dc1cd61a8b906952e068f2a92d9 session #1
-leader-1       | 2024-08-22T00:22:08.870662Z  INFO validator::roast::roast_leader: validator/src/roast/roast_leader.rs:152: Session 1 is ready for aggregation
-validator-1-1  | 2024-08-22T00:22:08.870958Z  INFO validator::roast::roast_entry_generation: validator/src/roast/roast_entry_generation.rs:65: Generated 1 block commitments for block id #3c2360fc4938d5f08a2ab8b0bc15f5ee54b42dc1cd61a8b906952e068f2a92d9 session #2
-leader-1       | 2024-08-22T00:22:08.874029Z  INFO validator::roast::roast_leader: validator/src/roast/roast_leader.rs:233: Successfully finished signatures in session 1
-leader-1       | 2024-08-22T00:22:08.874064Z  INFO validator::roast::roast_verification: validator/src/roast/roast_verification.rs:199: Execution time for verify_and_prepare_block: 1.4333e-5 seconds
-leader-1       | 2024-08-22T00:22:08.874071Z  INFO validator::utils: validator/src/utils.rs:320: Execution time for submit_block_to_btc: 2.1834e-5 seconds
-leader-1       | 2024-08-22T00:22:08.875352Z  INFO validator::roast::roast_verification: validator/src/roast/roast_verification.rs:308: Successfully verified the block #3c2360fc4938d5f08a2ab8b0bc15f5ee54b42dc1cd61a8b906952e068f2a92d9 signature !
-leader-1       | 2024-08-22T00:22:08.875367Z  INFO validator::roast::roast_block_result: validator/src/roast/roast_block_result.rs:69: 0 Transactions were submitted to btc network : []
-leader-1       | 2024-08-22T00:22:08.876336Z  INFO validator::roast::roast_block_result: validator/src/roast/roast_block_result.rs:117: Block #3c2360fc4938d5f08a2ab8b0bc15f5ee54b42dc1cd61a8b906952e068f2a92d9 was finalized in session 1, I got 1 signatures and successfully verified the block signature !
+Welcome to the Arch Network CLI
+  → Loading configuration from /Users/jr/Library/Application Support/arch-cli/config.toml
+Starting the development server...
+  ✓ Bitcoin started.
+[+] Running 10/10
+ ✔ leader Pulled 6.7s
+ ✔ validator-2 Pulled 6.7s
+ ✔ validator-1 Pulled 6.7s
+ ✔ init Pulled 6.7s
+ ✔ bootnode Pulled 6.6s
+[+] Running 7/7
+ ✔ Network arch-cli_arch-network Created 0.0s
+ ✔ Network arch-cli_default Created 0.0s
+ ✔ Container arch-cli-init-1  Started 0.5s
+ ✔ Container arch-cli-bootnode-1  Started 0.3s
+ ✔ Container arch-cli-leader-1  Started 0.4s
+ ✔ Container arch-cli-validator-1-1  Started 0.5s
+ ✔ Container arch-cli-validator-2-1  Started 0.6s
+  ✓ Development server started successfully
 ```
 
-[arch-local]: https://github.com/Arch-Network/arch-local
-[compose.yaml]: https://github.com/Arch-Network/arch-local/blob/main/compose.yaml
+### Manage the services
 
+The following commands can be used stop, check the status of, and view logs for the development environment, including the Bitcoin regtest network and Arch Network nodes.
+
+```bash
+arch-cli server status
+```
+
+The following is an example output from querying the server status.
+
+```bash
+Welcome to the Arch Network CLI
+  → Loading configuration from /Users/jr/Library/Application Support/arch-cli/config.toml
+Checking development server status...
+  → Checking Bitcoin regtest network status...
+    ✓ bitcoin is running
+    ✓ electrs is running
+    ✓ btc-rpc-explorer is running
+  → Checking Arch Network nodes status...
+    ✓ bootnode is running
+    ✓ leader is running
+    ✓ validator-1 is running
+    ✓ validator-2 is running
+```
+
+We'll reference these later in the book. For now, familiarize yourself with starting and stopping the stack.
+
+```bash
+arch-cli server stop
+arch-cli server logs [<service>]
+```
+
+Great, you're ready for hacking!
+
+[arch-cli]: https://github.com/Arch-Network/arch-cli
+[arch-docker-compose.yml]: https://github.com/Arch-Network/arch-cli/blob/main/arch-docker-compose.yml
+[bitcoin-docker-compose.yml]: https://github.com/Arch-Network/arch-cli/blob/main/bitcoin-docker-compose.yml
+[btc-rpc-explorer.dockerfile]: https://github.com/Arch-Network/arch-cli/blob/main/btc-rpc-explorer.dockerfile
